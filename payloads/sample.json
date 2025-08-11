@@ -1,0 +1,19 @@
+{
+  "contacts": [
+    {
+      "wa_id": "1234567890",
+      "profile": {
+        "name": "User1"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg_001",
+      "text": {
+        "body": "Hello World"
+      },
+      "timestamp": "2025-08-11T10:00:00Z"
+    }
+  ]
+}
