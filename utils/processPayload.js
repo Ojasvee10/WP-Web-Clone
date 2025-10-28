@@ -1,26 +1,32 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import mongoose from 'mongoose';
-import Message from '../models/Message.js'; // adjust path if different
 import dotenv from 'dotenv';
+import Message from '../models/Message.js'; 
+
 dotenv.config();
 
 const __dirname = path.resolve();
-const payloadDir = path.join(__dirname, 'whatsapp sample payloads'); // adjust if folder is elsewhere
+const payloadDir = path.join(__dirname, 'whatsapp sample payloads');
 
-// MongoDB connect
-await mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
-console.log('✅ Connected to MongoDB');
+// MongoDB connection
+try {
+  await mongoose.connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  });
+  console.log('✅ Connected to MongoDB');
+} catch (err) {
+  console.error('❌ MongoDB connection failed:', err);
+  process.exit(1);
+}
 
 async function processChange(change) {
-  const value = change.value || {};
+  const value = change?.value || {};
 
   // Handle messages
   if (Array.isArray(value.messages)) {
-    const contact = (value.contacts && value.contacts[0]) || {};
+    const contact = value.contacts?.[0] || {};
     const name = contact.profile?.name || null;
 
     for (const m of value.messages) {
@@ -34,8 +40,8 @@ async function processChange(change) {
         wa_id: m.from || null,
         name,
         from: m.from || null,
-        to: m.to || (value.metadata && value.metadata.phone_number_id) || null,
-        text: (m.text && m.text.body) || '',
+        to: m.to || value.metadata?.phone_number_id || null,
+        text: m.text?.body || '',
         type: m.type || 'text',
         timestamp: m.timestamp
           ? new Date(Number(m.timestamp) * 1000)
@@ -44,7 +50,11 @@ async function processChange(change) {
         raw: m,
       };
 
-      await Message.findOneAndUpdate({ id: doc.id }, { $set: doc }, { upsert: true });
+      await Message.findOneAndUpdate(
+        { id: doc.id },
+        { $set: doc },
+        { upsert: true }
+      );
       console.log(`💾 Saved message: ${doc.id}`);
     }
   }
@@ -54,6 +64,7 @@ async function processChange(change) {
     for (const s of value.statuses) {
       const id = s.id || s.message_id || s.meta_msg_id;
       if (!id) continue;
+
       await Message.findOneAndUpdate(
         { id },
         {
@@ -72,26 +83,34 @@ async function processChange(change) {
 }
 
 async function main() {
-  const files = fs.readdirSync(payloadDir).filter(f => f.endsWith('.json'));
+  try {
+    const files = (await fs.readdir(payloadDir)).filter(f =>
+      f.endsWith('.json')
+    );
 
-  for (const file of files) {
-    const content = JSON.parse(fs.readFileSync(path.join(payloadDir, file), 'utf-8'));
+    for (const file of files) {
+      const filePath = path.join(payloadDir, file);
+      const content = JSON.parse(await fs.readFile(filePath, 'utf-8'));
 
-    // WhatsApp webhook style: entry[0].changes[]
-    if (content.entry) {
-      for (const entry of content.entry) {
-        for (const change of entry.changes || []) {
-          await processChange(change);
+      // WhatsApp webhook style: entry[0].changes[]
+      if (content.entry) {
+        for (const entry of content.entry) {
+          for (const change of entry.changes || []) {
+            await processChange(change);
+          }
         }
       }
     }
-  }
 
-  console.log('✅ All payloads processed.');
-  mongoose.connection.close();
+    console.log('✅ All payloads processed.');
+  } catch (err) {
+    console.error('❌ Error processing payloads:', err);
+  } finally {
+    mongoose.connection.close();
+  }
 }
 
-main().catch(err => {
-  console.error(err);
-  mongoose.connection.close();
-});
+main();
+
+
+// make the code more readable and understandable for the developers
